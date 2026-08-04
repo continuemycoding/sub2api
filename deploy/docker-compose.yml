@@ -27,8 +27,8 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
+    # security_opt:
+    #   - no-new-privileges:true
     ulimits:
       nofile:
         soft: 100000

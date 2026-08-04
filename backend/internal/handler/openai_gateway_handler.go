@@ -307,6 +307,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
+	if suffixedBody, changed := service.ApplyOpenAIReasoningEffortModelSuffix(body, true); changed {
+		body = suffixedBody
+		modelResult = gjson.GetBytes(body, "model")
+	}
 	reqModel := modelResult.String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI, service.PlatformGrok) {

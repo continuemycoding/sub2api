@@ -80,6 +80,56 @@ func TestNormalizeMaxReasoningEffortForPlatform(t *testing.T) {
 	require.ErrorContains(t, err, "not supported")
 }
 
+func TestApplyOpenAIReasoningEffortModelSuffix(t *testing.T) {
+	tests := []struct {
+		name            string
+		body            string
+		wantModel       string
+		wantEffort      string
+		changed         bool
+		chatCompletions bool
+	}{
+		{name: "sol high", body: `{"model":"gpt-5.6-sol-high","input":"hello"}`, wantModel: "gpt-5.6-sol", wantEffort: "high", changed: true},
+		{name: "sol max", body: `{"model":"gpt-5.6-sol-max","input":"hello"}`, wantModel: "gpt-5.6-sol", wantEffort: "max", changed: true},
+		{name: "chat completions uses flat effort", body: `{"model":"gpt-5.6-sol-medium","messages":[]}`, wantModel: "gpt-5.6-sol", wantEffort: "medium", changed: true, chatCompletions: true},
+		{name: "path alias xhigh", body: `{"model":"openai/gpt-5.6-sol-xhigh"}`, wantModel: "openai/gpt-5.6-sol", wantEffort: "xhigh", changed: true},
+		{name: "explicit nested wins", body: `{"model":"gpt-5.6-sol-high","reasoning":{"effort":"low"}}`, wantModel: "gpt-5.6-sol", wantEffort: "low", changed: true},
+		{name: "explicit flat wins", body: `{"model":"gpt-5.6-sol-high","reasoning_effort":"medium"}`, wantModel: "gpt-5.6-sol", wantEffort: "medium", changed: true},
+		{name: "base model unchanged", body: `{"model":"gpt-5.6-sol"}`, wantModel: "gpt-5.6-sol", changed: false},
+		{name: "non OpenAI model unchanged", body: `{"model":"claude-sonnet-high"}`, wantModel: "claude-sonnet-high", changed: false},
+		{name: "unknown suffix unchanged", body: `{"model":"gpt-5.6-sol-fast"}`, wantModel: "gpt-5.6-sol-fast", changed: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, changed := ApplyOpenAIReasoningEffortModelSuffix([]byte(tt.body), !tt.chatCompletions)
+			require.Equal(t, tt.changed, changed)
+			require.Equal(t, tt.wantModel, gjson.GetBytes(got, "model").String())
+			if tt.wantEffort != "" {
+				actual := gjson.GetBytes(got, "reasoning.effort").String()
+				if actual == "" {
+					actual = gjson.GetBytes(got, "reasoning_effort").String()
+				}
+				require.Equal(t, tt.wantEffort, actual)
+			}
+		})
+	}
+}
+
+func TestOpenAIReasoningEffortModelSuffixRunsBeforePolicy(t *testing.T) {
+	body, changed := ApplyOpenAIReasoningEffortModelSuffix([]byte(`{"model":"gpt-5.6-sol-xhigh"}`), true)
+	require.True(t, changed)
+
+	body, changed = ApplyOpenAIReasoningEffortPolicy(
+		body,
+		"medium",
+		[]ReasoningEffortMapping{{From: "xhigh", To: "high"}},
+	)
+	require.True(t, changed)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "medium", gjson.GetBytes(body, "reasoning.effort").String())
+}
+
 func TestApplyOpenAIReasoningEffortPolicy(t *testing.T) {
 	tests := []struct {
 		name     string

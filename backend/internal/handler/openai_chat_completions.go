@@ -74,6 +74,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
+	if suffixedBody, changed := service.ApplyOpenAIReasoningEffortModelSuffix(body, false); changed {
+		body = suffixedBody
+		modelResult = gjson.GetBytes(body, "model")
+	}
 	reqModel := modelResult.String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !openAICompatibleTextTargetAllowed(c, apiKey, reqModel) {

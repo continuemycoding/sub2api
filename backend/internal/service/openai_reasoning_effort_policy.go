@@ -151,6 +151,57 @@ func sanitizeGroupReasoningEffortPolicy(group *Group) {
 	group.ReasoningEffortMappings = mappings
 }
 
+// ApplyOpenAIReasoningEffortModelSuffix converts a recognized model suffix into
+// reasoning.effort for clients that can only select an aliased model name.
+// Explicit request fields take precedence over the suffix.
+func ApplyOpenAIReasoningEffortModelSuffix(body []byte, responsesAPI bool) ([]byte, bool) {
+	modelField := gjson.GetBytes(body, "model")
+	if !modelField.Exists() || modelField.Type != gjson.String {
+		return body, false
+	}
+
+	model := strings.TrimSpace(modelField.String())
+	separator := strings.LastIndexAny(model, "-_ ")
+	if separator <= 0 || separator == len(model)-1 {
+		return body, false
+	}
+
+	rawSuffix := model[separator+1:]
+	effort := NormalizeMaxReasoningEffort(rawSuffix)
+	if effort == "" {
+		if !strings.EqualFold(strings.TrimSpace(rawSuffix), "none") {
+			return body, false
+		}
+		effort = "minimal"
+	}
+
+	baseModel := strings.TrimSpace(model[:separator])
+	if baseModel == "" || !strings.HasPrefix(strings.ToLower(lastOpenAIModelSegment(baseModel)), "gpt-") {
+		return body, false
+	}
+
+	result, err := sjson.SetBytes(body, "model", baseModel)
+	if err != nil {
+		return body, false
+	}
+	if nested := gjson.GetBytes(result, "reasoning.effort"); nested.Exists() {
+		return result, true
+	}
+	if flat := gjson.GetBytes(result, "reasoning_effort"); flat.Exists() {
+		return result, true
+	}
+
+	path := "reasoning_effort"
+	if responsesAPI {
+		path = "reasoning.effort"
+	}
+	result, err = sjson.SetBytes(result, path, effort)
+	if err != nil {
+		return body, false
+	}
+	return result, true
+}
+
 // ApplyOpenAIReasoningEffortPolicy applies one exact mapping and then caps
 // known effort levels. Omitted values remain untouched so upstream defaults
 // stay in control.

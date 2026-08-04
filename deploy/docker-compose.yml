@@ -16,8 +16,16 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: nullptrlab/sub2api:latest
+    # skopeo copy docker://nullptrlab/sub2api:latest docker-archive:image.tar:nullptrlab/sub2api:latest && docker load -i image.tar && rm image.tar
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
     container_name: sub2api
+    env_file:
+      - .env
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
